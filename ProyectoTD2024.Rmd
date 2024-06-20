@@ -384,22 +384,21 @@ print(top_5_localidades_tickets)
 ```
 
 
-5. ¿Cuántos kilos de plátanos y de bananas se han vendido en todos los tickets?
+5.  ¿Cuántos kilos de plátanos y de bananas se han vendido en todos los
+    tickets?
+
 ```{r}
-top_5_localidades_ventas <- data_frame %>%
-  group_by(direccion_tienda) %>%
-  summarise(total_ventas = sum(total_compra)) %>%
-  arrange(desc(total_ventas)) %>%
-  head(5)
+# Filtrar el dataframe para obtener solo los productos que sean plátanos o bananas
+platanos_bananas <- data_frame_productos %>%
+  filter(str_detect(tolower(descripcion), "plátano|banana"))
 
-top_5_localidades_tickets <- data_frame %>%
-  group_by(direccion_tienda) %>%
-  summarise(num_tickets = n()) %>%
-  arrange(desc(num_tickets)) %>%
-  head(5)
+# Calcular la cantidad total vendida de plátanos y bananas
+kilos_platanos_bananas <- platanos_bananas %>%
+  summarise(total_kilos = sum(cantidad, na.rm = TRUE))
 
-print(top_5_localidades_ventas)
-print(top_5_localidades_tickets)
+# Mostrar el resultado
+print(kilos_platanos_bananas)
+
 
 ```
 
