@@ -1,0 +1,541 @@
+---
+title: "ProyectoTDRoberto"
+date: "2024-06-20"
+author:
+  - name: Roberto Millán
+    email: romibre@alumni.uv.es
+
+type: article
+status: submit
+simplesummary: |
+  A Simple summary goes here.
+abstract: |
+  A single paragraph of about 200 words maximum. For research articles, 
+  abstracts should give a pertinent overview of the work. We strongly encourage
+  authors to use the following style of structured abstracts, but without 
+  The abstract should be an objective representation of the article, it must not 
+  contain results which are not presented and substantiated in the main text and 
+  should not exaggerate the main conclusions.
+  headings: 1) Background: Place the question addressed in a broad context and
+  highlight the purpose of the study; 2) Methods: Describe briefly the main
+  methods or treatments applied; 3) Results: Summarize the article's main 
+  findings; and 4) Conclusion: Indicate the main conclusions or interpretations. 
+keywords: |
+  keyword 1; keyword 2; keyword 3 (list three to ten pertinent keywords specific 
+  to the article, yet reasonably common within the subject discipline.).
+acknowledgement: |
+  All sources of funding of the study should be disclosed. Please clearly 
+  indicate grants that you have received in support of your research work. 
+  Clearly state if you received funds for covering the costs to publish in open
+abbreviations:
+  - short: MDPI
+    long: Multidisciplinary Digital Publishing Institute
+  - short: DA
+    long: Data Analysis
+endnotes: True
+output: 
+  rticles::mdpi_article:
+    extra_dependencies: longtable
+---
+
+# Introducción
+
+¡Bienvenidos! En este análisis, vamos a explorar los recibos del supermercado Mercadona y extraer diversas conclusiones del conjunto de datos proporcionado. Cabe señalar que los datos han sido suministrados por el profesorado.
+
+## Materiales y Métodos
+
+Para este trabajo, usaremos la plantilla *"MDPI Journal Article"* adaptada a nuestras necesidades. Utilizaremos varias librerías de **R** para realizar el análisis exploratorio, como *stringr*, *tidyverse*, y *dplyr*. La librería *pdftools* nos permitirá importar archivos, *ggplot2* será útil para crear gráficos, fundamentales en la visualización de datos, y usaremos la librería *knitr* para ciertos formatos y tablas del artículo.\endnote{Los métodos y herramientas utilizados se especificarán con mayor detalle a lo largo del artículo.}
+
+Para facilitar el manejo de los datos, trabajaremos con dos data frames. En el primer data frame se incluirán las variables necesarias de los recibos, como la dirección del supermercado, el precio total de la compra, la fecha y hora, etc. En este data frame, todos los productos del recibo estarán almacenados como una cadena de texto en una única variable. El segundo data frame contendrá la información de los productos en variables distintas: la cantidad, el nombre del producto (descripción), el precio del producto, y el importe pagado, que depende de la cantidad.
+
+Los data frames estarán relacionados por la variable fs: factura simplificada.
+
+```{r include=FALSE}
+# Limpiar el entorno
+rm(list=ls())
+
+# Lista de librerías necesarias
+paquetes = c("knitr", "tidyverse", "ggplot2", "dplyr", "pdftools", "stringr", "corrplot")
+
+# Cargar los paquetes, si no están instalados, se instalarán automáticamente
+package.check <- lapply(paquetes, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE, repos='http://cran.rediris.es')
+    library(x, character.only = TRUE)
+  }
+})
+```
+
+# Importación de los datos
+
+## Carga de ficheros
+
+Cargaremos los nombres de los ficheros pdf, de los tickets de compra, en una variable con el objetivo de poder leerlos en un bucle y asignar los datos a un dataframe.
+
+Leeremos los archivos de la carpeta 'data' que acaben por *".pdf"* .
+
+
+```{r}
+archivos <- list.files(path = "./data", full.names = TRUE, pattern = ".pdf$")
+for (arch in archivos){
+  nuevo_nombre <- gsub(x=arch, pattern = " €", replacement = "")
+  file.rename(from = arch, to = nuevo_nombre)
+}
+
+n_archivos <- length(archivos)
+
+```
+
+##Carga de datos
+
+Crearemos un data frame con los datos y los modificaremos para que tengan un formato y clase adecuados. Para leer los archivos PDF usaremos las funciones de la librería pdftools y para modificar cada línea y los caracteres dentro de los datos usaremos la librería stringr. La variable fecha le asignamos la clase DATE y a las variables numéricas decimales (total, base imponible y la cuota), las ponemos como numéricas. También debemos tener en cuenta que la mayoría de datos no se pueden añadir a la lista directamente. Por ejemplo, la fecha, hora y número de operación están en la misma línea, por lo que hay que separarlos y poner cada dato en su variable correspondiente.\endnote{No se incluirá la visualización del data frame de los recibos debido a que ocupa demasiado espacio y no se aprecian bien las variables y los datos de la tabla.}
+
+Las variables que tenemos finalmente son las mostradas en la siguiente tabla como se muestra en la Tabla \ref{tab
+}.
+```{r}
+nombres_var <- c("nombre_tienda", "nombre_empresa", "direccion_tienda", "codigo_postal", "telefono_tienda", "fecha_compra", "hora_compra", "num_operacion", "codigo_fs", "lista_productos", "total_compra", "forma_pago", "base_imponible", "cuota_iva", "nombre del comercio", "tipo y código de empresa", "dirección del comercio", "código postal", "teléfono del comercio", "fecha de la compra (día-mes-año)", "hora de la compra (horas y minutos)", "número del código de la operación", "código de la factura simplificada", "lista con los productos comprados", "dinero total de la compra", "forma de pago (tarjeta o en efectivo)", "base imponible (IVA)", "cuota del IVA")
+knitr::kable(rticles::string_to_table(nombres_var, 2), align = 'c', 
+             col.names = c("Variable", "Descripción"),
+             format = "latex", booktab = TRUE, 
+             caption = "Descripción de variables")
+
+```
+
+```{r include=FALSE}
+# Definir todos los vectores para almacenar los datos
+
+nombre_empresa <- c()  
+nombre_tienda <- c()  #Primera línea, nombre del comercio
+direccion_tienda <- c()  #Dirección de la tienda
+codigo_postal <- c() #Codigo postal
+telefono_tienda <- c() #Teléfono de la tienda
+fecha_compra <- c() #Fecha de la compra
+hora_compra <- c()  #Hora de la compra
+num_operacion <- c() #Número de operación
+codigo_fs <- c()     #Código de factura simplificada
+lista_productos <- c() #Lista de productos
+total_compra <- c()    #Importe total de la compra
+forma_pago <- c()     #Método utilizado para la realización del pago
+base_imponible <- c()  #Base imponible
+cuota_iva <- c()       #Cuota del IVA
+
+# Recorrer cada archivo
+for (archivo in archivos) {
+  archivo_pdf <- pdf_text(archivo) # Leer el archivo PDF
+  ticket <- trimws(strsplit(archivo_pdf, split = "\n")[[1]]) # Separar por líneas
+  ticket <- ticket[grep(".", ticket)] # Quitar las líneas vacías
+
+  # Procesar los datos del ticket
+  linea_tienda <- ticket[1]
+  linea_direccion <- ticket[2]
+  linea_cp <- ticket[3]
+  linea_telefono <- ticket[4]
+  linea_fecha_hora_op <- ticket[5]
+  linea_fs <- ticket[6]
+  p = 8 
+  linea_productos <- ticket[8]
+  while (ticket[p+1] != ticket[grep("TOTAL", ticket)[1]]){
+    p = p + 1
+    linea_productos <- paste(linea_productos, ticket[p], sep = ";")
+  }
+  linea_total <- ticket[grep("TOTAL", ticket)[1]]
+  linea_forma_pago <- ticket[p+2]
+  linea_iva <- ticket[grep("TOTAL", ticket)[2]]
+  
+  # Extraer los datos
+  tienda <- strsplit(linea_tienda, ", ")[[1]]
+  nombre_empresa <- c(nombre_empresa, tienda[2])
+  nombre_tienda <- c(nombre_tienda, tienda[1])
+  direccion_tienda <- c(direccion_tienda, trimws(linea_direccion))
+  cp_info <- strsplit(trimws(linea_cp), " ")[[1]]
+  codigo_postal <- c(codigo_postal, cp_info[1])
+  telefono_tienda <- c(telefono_tienda, trimws(gsub("TELÉFONO:", "", linea_telefono)))
+  fecha_hora_op <- strsplit(trimws(linea_fecha_hora_op), " ")[[1]]
+  fecha_hora_op <- fecha_hora_op[grep(".", fecha_hora_op)]
+  fecha_compra <- c(fecha_compra, fecha_hora_op[1])
+  hora_compra <- c(hora_compra, fecha_hora_op[2])
+  num_operacion <- c(num_operacion, gsub("OP:", "", fecha_hora_op[4]))
+  codigo_fs <- c(codigo_fs, gsub("FACTURA SIMPLIFICADA:", "", linea_fs))
+  lista_productos <- c(lista_productos, linea_productos)
+  total_compra <- c(total_compra, trimws(gsub("TOTAL [(]€[)]", "", linea_total)))
+  formapago <- strsplit(linea_forma_pago," ")[[1]]
+  forma_pago <- c(forma_pago, paste0(formapago[1],formapago[2]))
+  base_cuota <- strsplit(trimws(linea_iva),split = " ")[[1]]
+  base_cuota <- base_cuota[grep(".", base_cuota)]
+  base_imponible <- c(base_imponible,base_cuota[2])
+  cuota_iva <- c(cuota_iva, base_cuota[3])
+  
+}
+#CONSTRUYAMOS UN DATA FRAME DE LOS DATOS
+data_frame <- data.frame(nombre_tienda, nombre_empresa, direccion_tienda, codigo_postal, telefono_tienda, fecha_compra, hora_compra, num_operacion, codigo_fs, lista_productos, total_compra, forma_pago, base_imponible, cuota_iva, stringsAsFactors = FALSE)
+
+#Modifiquemos las clases de los datos:
+data_frame$fecha_compra <- as.Date(data_frame$fecha_compra ,format = "%d/%m/%Y")
+data_frame$total_compra <- as.numeric(gsub(pattern = ",",replacement = ".",data_frame$total_compra))
+data_frame$base_imponible <- as.numeric(gsub(pattern = ",",replacement = ".",data_frame$base_imponible))
+data_frame$cuota_iva <- as.numeric(gsub(pattern = ",",replacement = ".",data_frame$cuota_iva))
+```
+
+
+### Analizamos los productos
+
+Cada producto tiene la cantidad en la cual se ha comprado ese producto, el
+nombre del producto, y el importe que se va a cobrar de ese producto.
+Esto nos genera problemas cuando la cantidad es mayor que 1, porque en la
+línea pasamos de tener 3 datos a tener 4. También hay que tener en
+cuenta que los productos de frutería, pescado y listo para comer están
+almacenados de forma diferente. Podemos observar que estos productos
+están formados por dos líneas: la primera línea contiene un "1" y el
+nombre del producto; en los productos de pescado y listo para comer solo
+está el nombre y antes de todos los elementos aparece una línea
+adicional con "PESACO" o "LISTO COMER" respectivamente. En la segunda
+línea está la cantidad en kg o ud del producto, el precio €/kg o €/ud, y
+el importe del producto.
+
+Además, en algunos tickets aparece el producto de PARKING, y después de
+este la hora de entrada y salida, que hemos decidio eliminar.
+
+```{r include=FALSE,warning=FALSE}
+#Ahora separemos todos los productos
+data_frame_productos <- data_frame %>% select(c(codigo_fs, lista_productos)) %>% 
+  separate_rows(lista_productos, sep = ";")
+
+
+#Eliminemos la entrada y salida del parking
+parking <- which(data_frame_productos$lista_productos == "1   PARKING                                       0,00") + 1
+data_frame_productos <- data_frame_productos[-(parking),]
+
+#Eliminar línea pescado
+pescado <- which(data_frame_productos$lista_productos == "PESCADO")
+data_frame_productos <- data_frame_productos[-(pescado),]
+
+#Eliminar línea listo comer
+listo <- which(data_frame_productos$lista_productos == "LISTO COMER")
+data_frame_productos <- data_frame_productos[-(listo),]
+
+#Líneas con productos al peso
+ind_frutas <- grep(pattern = "€", x = data_frame_productos$lista_productos, value = F)
+data_frame_frutas <- data_frame_productos[ind_frutas,]
+data_frame_frutas <- data_frame_frutas %>%
+    mutate(lista_productos = paste(gsub(x=(data_frame_productos$lista_productos[ind_frutas-1]),
+                                  pattern = "[0123456789]",replacement = ""),
+                             data_frame_productos$lista_productos[ind_frutas]))
+data_frame_frutas$lista_productos <- gsub(pattern = "kg|€/kg|ud|€/ud", "", data_frame_frutas$lista_productos) 
+data_frame_frutas <- data_frame_frutas %>%
+    mutate(productos_lista = strsplit(gsub("\\s+", " ", lista_productos), "\\s+", perl=TRUE))
+
+# Extraer cantidad, descripción y precio (fruta)
+cantidad <- sapply(data_frame_frutas$productos_lista, 
+                   function(x) as.numeric(gsub(",", ".", x[length(x)-2])))
+descripcion <- sapply(data_frame_frutas$productos_lista, function(x) { 
+  paste(x[1:(length(x)-3)],collapse = "")})
+importe <- sapply(data_frame_frutas$productos_lista, 
+                   function(x) as.numeric(gsub(",", ".", x[length(x)])))
+precio <- sapply(data_frame_frutas$productos_lista, 
+                   function(x) as.numeric(gsub(",", ".", x[length(x)-1])))
+
+data_frame_frutas <- cbind(data_frame_frutas, cantidad, descripcion, precio,importe)
+
+data_frame_productos <- data_frame_productos[-c(ind_frutas,(ind_frutas-1)),]
+
+#Para el resto de productos
+data_frame_productos <- data_frame_productos %>%
+  mutate(productos_lista = strsplit(gsub("\\s+", " ", lista_productos), "\\s+", perl=TRUE))
+
+# Extraer cantidad, descripción y precio
+cantidad <- sapply(data_frame_productos$productos_lista, function(x) as.numeric(x[1]))
+descripcion <- sapply(data_frame_productos$productos_lista, function(x) 
+  {if (x[1]=="1") {
+    paste(x[2:(length(x)-1)], collapse = " ")
+  } else{
+    n <- as.integer(x[1])
+    if (n>1 && is.na(n) == FALSE){
+      paste(x[2:(length(x)-2)], collapse = " ")
+    }else{
+      paste(x[2:(length(x)-1)], collapse = " ")
+    }
+    }
+  }
+    )
+importe <- sapply(data_frame_productos$productos_lista, 
+                   function(x) as.numeric(gsub(",", ".", x[length(x)])))
+precio <- importe/cantidad
+
+#Añadiamos las nuevas columnas al data frame
+data_frame_productos <- cbind(data_frame_productos,cantidad, descripcion, precio,importe)
+
+#Unamos los dos dataframes
+data_frame_productos <- rbind(data_frame_productos, data_frame_frutas) %>% select(-c(lista_productos,productos_lista))
+```
+
+Obteniendo finalmente una data frame como este:
+
+```{r echo=FALSE}
+head(data_frame_productos)
+```
+
+#Exploración / visualización
+
+## Missing Data
+
+Al analizar nuestro data.frame podemos ver que no hay ningún missing data, debido al proceso de extracción de información que hemos realizado sobre nuestros tickets. 
+
+## Variables 
+### Variables de tipo numérico
+```{r}
+# Filtrar solo las variables numéricas
+data_frame_numeric <- data_frame[, sapply(data_frame, is.numeric) & colnames(data_frame) != "dia_mes"]
+# Calcular estadísticas descriptivas para variables numéricas
+estadisticas <- sapply(data_frame_numeric, function(x) {
+  media <- mean(x, na.rm = TRUE)
+  mediana <- median(x, na.rm = TRUE)
+  desv_est <- sd(x, na.rm = TRUE)
+  return(c(Media = media, Mediana = mediana, DesvEst = desv_est))
+})
+
+# Crear tabla de estadísticas descriptivas
+tabla_estadisticos <- as.data.frame(estadisticas)
+
+# Mostrar tabla de estadísticas descriptivas
+print(tabla_estadisticos)
+
+```
+
+```{r}
+# Calcular la matriz de correlación
+matriz_de_correlaccion <- cor(data_frame_numeric)
+
+# Mostrar la matriz de correlación
+print(matriz_de_correlaccion)
+
+```
+
+### Variables de tipo categórico
+
+
+## Análisis multivariable
+
+
+```{r}
+tickets <- 100 # Número de nombres de tickets que deseas crear
+nombres_tickets <- paste0("ticket", 1:tickets)
+
+plot <- data_frame_productos %>% group_by(codigo_fs) %>% 
+  summarise(freq = n()) 
+
+ggplot(plot,aes(x=reorder(codigo_fs,-freq, color = "darkolivegreen"), y = freq)) + 
+  geom_bar(stat = "identity") + 
+  labs(titel = "Cantidad de productos(diferentes)  x ticket",
+       x = "Tickets", y = "Productos")
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+  
+  
+#Respondamos a las siguientes preguntas:
+1. Número de tickets distintos
+
+```{r}
+numero_tickets_distintos <- n_distinct(data_frame$codigo_fs)
+print(numero_tickets_distintos)
+```
+
+2. Cuáles son las 10 localidades con más tickets
+```{r}
+
+top_10_localidades <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(num_tickets = n()) %>%
+  arrange(desc(num_tickets)) %>%
+  head()
+print(top_10_localidades)
+
+```
+
+
+3. ¿En qué localidad ha sido mayor el importe total de ventas?
+```{r}
+localidad_mayor_importe <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(desc(total_ventas)) %>%
+  head(1)
+print(localidad_mayor_importe)
+
+```
+
+
+4. ¿Las 5 localidades con más ventas son las que tienen más tickets?
+```{r}
+top_5_localidades_ventas <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(desc(total_ventas)) %>%
+  head(5)
+
+top_5_localidades_tickets <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(num_tickets = n()) %>%
+  arrange(desc(num_tickets)) %>%
+  head(5)
+
+print(top_5_localidades_ventas)
+print(top_5_localidades_tickets)
+
+```
+
+
+5. ¿Cuántos kilos de plátanos y de bananas se han vendido en todos los tickets?
+```{r}
+top_5_localidades_ventas <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(desc(total_ventas)) %>%
+  head(5)
+
+top_5_localidades_tickets <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(num_tickets = n()) %>%
+  arrange(desc(num_tickets)) %>%
+  head(5)
+
+print(top_5_localidades_ventas)
+print(top_5_localidades_tickets)
+
+```
+
+
+6. Haz una representación adecuada con el número de tickets obtenidos para cada día de la semana ¿qué días se han generado más tickets?
+
+```{r}
+data_frame <- data_frame %>%
+  mutate(dia_semana = weekdays(fecha_compra, abbreviate = TRUE))
+
+tickets_por_dia <- data_frame %>%
+  group_by(dia_semana) %>%
+  summarise(num_tickets = n()) %>%
+  arrange(desc(num_tickets))
+
+ggplot(tickets_por_dia, aes(x = reorder(dia_semana, -num_tickets), y = num_tickets)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Número de tickets por día de la semana",
+       x = "Día de la semana", y = "Número de tickets") +
+  theme_minimal()
+
+print(tickets_por_dia)
+#Podemos observar a través de nuestro diagrama de barras que el número de tickets
+#va decreciendo progresivamente y de forma escalonada según va avanzando la semana. Esto tiene todo el sentido del mundo, ya que la gente suele ir a comprar más entre semana que en fin de semana, especialmente domingo, en el que solo unos supermercados y no todos, están abiertos
+```
+
+
+
+7. ¿Cuál es el día de la semana con mayor importe total de ventas, ¿y el que menos?
+
+```{r}
+dia_mayor_importe <- data_frame %>%
+  group_by(dia_semana) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(desc(total_ventas)) %>%
+  head(1)
+
+print(dia_mayor_importe)
+
+dia_menor_importe <- data_frame %>%
+  group_by(dia_semana) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(total_ventas) %>%
+  head(1)
+
+print(dia_menor_importe)
+```
+
+8. ¿Cuál es el producto más caro, y el más barato?
+```{r}
+producto_mas_caro <- data_frame_productos %>%
+  arrange(desc(precio)) %>%
+  head(1)
+print(producto_mas_caro)
+
+#Si incluimos al parking, este será el producto más barato, ya que hay parking gratuito en el Mercadona
+producto_mas_barato <- data_frame_productos %>%
+  arrange(precio) %>%
+  head(1)
+print(producto_mas_barato)
+
+
+```
+
+9. Cuáles son los 10 productos más vendidos, y los menos?
+
+```{r}
+productos_mas_vendidos <- data_frame_productos %>%
+  group_by(descripcion) %>%
+  summarise(total_vendido = sum(cantidad)) %>%
+  arrange(desc(total_vendido)) %>%
+  head(10)
+
+productos_menos_vendidos <- data_frame_productos %>%
+  group_by(descripcion) %>%
+  summarise(total_vendido = sum(cantidad)) %>%
+  arrange(total_vendido) %>%
+  head(10)
+
+print(productos_mas_vendidos)
+print(productos_menos_vendidos)
+#Notemos que salen unidades decimales, esto tiene que ver porque hay ciertos productos, que en vez de en cantidad de unidades se miden en kilogramos, y una unidad equivale a un kg
+```
+
+10. ¿Cuál es la distribución del importe total de ventas por localidad?
+
+```{r}
+ggplot(data_frame, aes(x = direccion_tienda, y = total_compra)) +
+  geom_boxplot() +
+  labs(title = "Distribución del importe total de ventas por localidad de comercio",
+       x = "Localidad", y = "Importe total de ventas") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ventas_por_localidad <- data_frame %>%
+  group_by(direccion_tienda) %>%
+  summarise(total_ventas = sum(total_compra)) %>%
+  arrange(desc(total_ventas))
+
+print(ventas_por_localidad)
+
+```
+
+12. ¿Cuáles son los 10 productos que se pagan por peso (frutas, pescados y listo para comer) por los que se ha llegado a pagar mayor importe en total, y los que menos?
+
+```{r}
+importe_mayor <- data_frame_frutas %>% group_by(descripcion) %>% summarize(total_importe = sum(importe)) %>% arrange(desc(total_importe))%>% head(10)
+print(importe_mayor)
+importe_menor <- data_frame_frutas %>% group_by(descripcion) %>% summarize(total_importe = sum(importe)) %>% arrange(total_importe) %>% head(10)
+print(importe_menor)
+```
+
+# Resultados
+
+## Figures, Tables and Schemes
+
+All figures and tables should be cited in the main text as Figure
+\ref{tab:tabla1}, etc. To get cross-reference to figure generated by R
+chunks include the `\\label{}` tag in the `fig.cap` attribute of the R
+chunk: `fig.cap = "Fancy Caption\\label{fig:plot}"`.
+
+# Conclusión
+This section is not mandatory, but can be added to the manuscript if the
+discussion is unusually long or complex.
+
+```{r}
+#La conclusión que extraigo de este análisis de datos es que en general se
+#compra más entre semana que en fin de semana. Los productos que más se venden
+#son aquellos productos por así decirlo más necesarios para la vida cotidiana, 
+#como podrían ser los plátanos, las frutas, verduras, legumbres. Mientras que 
+#los que menos se venden son productos más exclusivos i limitados.
+#Otra cosa que podemos ver es que las "localidades" de mercadona que más tickets 
+# tienen son aquellos comercios que se sitúan en lugares más concurridos, como avenidas o calles céntricas.
+#También quisiera destacar, aunque no salga aquí, que las horas más concurridas son las 
+#horas centrales del día, con un valle en las horas de después de comer (15-16h), lo cual
+#nos puede dar una idea de los horarios de trabajo y de los hábitos de los consumidores de la zona.
+#¡Gracias por haber llegado hasta aquí, hasta la próxima!
+```
+ 
+
